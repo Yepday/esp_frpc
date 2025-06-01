@@ -1,0 +1,102 @@
+/********************************************************************\
+ * This program is free software; you can redistribute it and/or    *
+ * modify it under the terms of the GNU General Public License as   *
+ * published by the Free Software Foundation; either version 2 of   *
+ * the License, or (at your option) any later version.              *
+ *                                                                  *
+ * This program is distributed in the hope that it will be useful,  *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of   *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    *
+ * GNU General Public License for more details.                     *
+ *                                                                  *
+ * You should have received a copy of the GNU General Public License*
+ * along with this program; if not, contact:                        *
+ *                                                                  *
+ * Free Software Foundation           Voice:  +1-617-542-5942       *
+ * 59 Temple Place - Suite 330        Fax:    +1-617-542-2652       *
+ * Boston, MA  02111-1307,  USA       gnu@gnu.org                   *
+ *                                                                  *
+\********************************************************************/
+
+/** @file timer.c
+    @author Copyright (C) 2025 LYC <365256281@qq.com>
+*/
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
+#include <stdio.h>
+#include <string.h>
+#include "msg.h"
+#include "sntp.h"
+#include "timer.h"
+
+TimerHandle_t FrpcTimer;             // Handle for the FRPC timer
+extern time_t g_Pongtime;
+extern Control_t *g_pMainCtl;        // External main control structure pointer
+static const char *TAG = "timer";
+
+/**
+ * Timer callback function definition
+ * This function is called when the timer expires.
+ */
+void TimerCallback(TimerHandle_t xTimer) 
+{
+    // Get current system time
+    time_t current_time = obtain_time();
+    
+    // Calculate time difference since last pong
+    int interval = current_time - g_Pongtime;
+    
+    // Check if timeout occurred (40 seconds threshold)
+    if (g_Pongtime && interval > 40)
+    {
+        ESP_LOGI(TAG, "Time out");
+        return;
+    }  
+
+    // Send periodic ping to FRPS server
+    ESP_LOGI(TAG, "ping frps");
+    char *ping_msg = "{}";
+    send_enc_msg_frp_server(
+        g_pMainCtl->iMainSock,      // Main socket descriptor
+        TypePing,                   // Message type: PING
+        ping_msg,                   // Empty JSON payload
+        strlen(ping_msg),           // Message length
+        &g_pMainCtl->stream        // Stream context
+    );
+}
+
+/**
+ * Function to create and start the timer
+ * Initializes and starts the timer that sends periodic pings.
+ */
+void CreateTimer() 
+{
+    const char* timerName = "FrpcTimer";                 // Timer identifier
+    const TickType_t timerPeriod = pdMS_TO_TICKS(30000); // Convert 30,000ms to ticks
+    const UBaseType_t autoReload = pdTRUE;               // Enable auto-reload mode
+    
+    // Create software timer
+    FrpcTimer = xTimerCreate(
+        timerName,       // Timer name for debugging
+        timerPeriod,      // Timer period (30 seconds)
+        autoReload,       // Auto-reload when expired
+        (void*)0,         // No parameters passed to callback
+        TimerCallback     // Callback function pointer
+    );
+
+    // Check timer creation result
+    if (NULL == FrpcTimer) {
+        ESP_LOGI(TAG, "FrpcTimer create fail!");
+    } else {
+        ESP_LOGI(TAG, "FrpcTimer create success!");
+        
+        // Attempt to start the timer
+        if (xTimerStart(FrpcTimer, 0) != pdPASS) {  // 0 = don't wait if queue is full
+            ESP_LOGI(TAG, "FrpcTimer start fail!");
+        } else {
+            ESP_LOGI(TAG, "FrpcTimer create success!");
+        }
+    }
+}
