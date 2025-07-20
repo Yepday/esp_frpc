@@ -31,6 +31,7 @@
 #include "esp_log.h"
 #include "control.h"
 #include "login.h"
+#include "config.h"
 #include "msg.h"
 #include "crypto.h"
 #include "sntp.h"
@@ -42,10 +43,7 @@
 #include <lwip/netdb.h>
 #include "driver/gpio.h"
 
-// GPIO configuration macros
-#define GPIO_OUTPUT_IO_0    12      // GPIO pin 12 for output
-#define GPIO_OUTPUT_IO_1    4       // GPIO pin 4 for output
-#define GPIO_OUTPUT_PIN_SEL  ((1ULL<<GPIO_OUTPUT_IO_0) | (1ULL<<GPIO_OUTPUT_IO_1))  // Bitmask for selected GPIOs
+// GPIO configuration is now defined in config.h
 
 static const char *TAG = "control";
 
@@ -68,21 +66,11 @@ extern login_t *g_pLogin;
 extern struct frp_coder *encoder;
 extern Control_t *g_pMainCtl;
 
-/**
- * Initialize GPIO pins as outputs with initial states
- */
-void init_GPIO() {
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;        // Disable interrupts
-    io_conf.mode = GPIO_MODE_OUTPUT;              // Set as output mode
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;   // Select GPIO pins
-    io_conf.pull_down_en = 0;                     // Disable pull-down
-    io_conf.pull_up_en = 0;                       // Disable pull-up
-    gpio_config(&io_conf);                        // Apply configuration
+// 连接状态控制函数声明 (定义在timer.c中)
+extern void set_frpc_connection_connected(void);
+extern void set_frpc_connection_disconnected(void);
 
-    gpio_set_level(GPIO_OUTPUT_IO_0, 0);  // Set GPIO12 to LOW
-    gpio_set_level(GPIO_OUTPUT_IO_1, 1);  // Set GPIO4 to HIGH
-}
+// GPIO initialization is now handled in main.c
 
 /**
  * Establish connection to the remote server
@@ -94,14 +82,14 @@ void connect_to_server() {
     int err;
 
     struct sockaddr_in destAddr;
-    destAddr.sin_addr.s_addr = inet_addr(SERVER_ADDR);  // Server IP
-    destAddr.sin_family = AF_INET;                      // IPv4
-    destAddr.sin_port = htons(SERVER_PORT);             // Server port
+    destAddr.sin_addr.s_addr = inet_addr(g_device_config.frp_server);  // Server IP from NVS config
+    destAddr.sin_family = AF_INET;                                     // IPv4
+    destAddr.sin_port = htons(g_device_config.frp_port);               // Server port from NVS config
     addr_family = AF_INET;
     ip_protocol = IPPROTO_IP;
     inet_ntoa_r(destAddr.sin_addr, addr_str, sizeof(addr_str) - 1);
 
-    CreateTimer();  // Initialize timer
+    // Timer is already initialized in main.c
 
     int MainSock = socket(addr_family, SOCK_STREAM, ip_protocol);
     if (MainSock < 0) {
@@ -114,7 +102,7 @@ void connect_to_server() {
     if (err != 0) {
         ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
         close(MainSock);
-        RESET_DEVICE;
+        RESET_DEVICE;  // 异常断开直接重启，不需要LED闪烁
         return;
     }
 
@@ -133,12 +121,13 @@ void connect_to_server() {
  * Initialize all system components
  */
 void initialize() {
-    init_GPIO();             // Configure GPIOs
+    // GPIO已在main.c中初始化，无需重复
     init_login();            // Initialize login
     init_main_control();     // Setup main control structure
     init_main_config();      // Load main configuration
     init_proxy_Service();    // Configure proxy service
     init_sntp();             // Initialize SNTP for time sync
+    set_frpc_connection_disconnected();  // Initial state - NET LED off
 }
 
 /**
@@ -176,12 +165,12 @@ void init_proxy_Service() {
         return;
     }
 
-    // Set proxy configuration parameters
-    g_pProxyService->proxy_name = strdup(PROXY_NAME);
-    g_pProxyService->proxy_type = strdup(PROXY_TYPE);
-    g_pProxyService->local_ip = strdup(LOCAL_IP);
-    g_pProxyService->local_port = LOCAL_PORT;
-    g_pProxyService->remote_port = REMOTE_PORT;
+    // Set proxy configuration parameters from NVS config
+    g_pProxyService->proxy_name = strdup(g_device_config.proxy_name);
+    g_pProxyService->proxy_type = strdup(g_device_config.proxy_type);
+    g_pProxyService->local_ip = strdup(g_device_config.local_ip);
+    g_pProxyService->local_port = g_device_config.local_port;
+    g_pProxyService->remote_port = g_device_config.remote_port;
 
     dump_common_conf();  // Log configuration details
 }
@@ -235,7 +224,7 @@ uint tmux_stream_write(int Sockfd, char *data, uint length, tmux_stream_t *pstre
     if (send(Sockfd, data, length, 0) < 0) {               // Send payload
         ESP_LOGE(TAG, "error: tmux_stream_write send FAIL");
         uiRet = _FAIL;
-        RESET_DEVICE;
+        RESET_DEVICE;  // 异常断开直接重启，不需要LED闪烁
     }   
     return uiRet;
 }
@@ -358,9 +347,9 @@ void process_data() {
             rx_len = read(MainSock, g_RxBuffer, stream_len);  // Read payload
 
             if (0 == rx_len) {  // Connection closed
-		close(MainSock);
-            	RESET_DEVICE;
-		return;
+	            close(MainSock);
+            	RESET_DEVICE;  // 异常断开直接重启，不需要LED闪烁
+		        return;
             }
 
             // Handle encrypted data for main stream
@@ -420,17 +409,22 @@ void process_data() {
                         sprintf(buf, "%d bytes recieved!\n", stream_len);
                         tmux_stream_write(g_pMainCtl->iMainSock, buf, strlen(buf), &g_pClient->stream);
                         
-                        // GPIO control logic
+                        // GPIO control logic (LED and Relay control)
                         if(strstr(g_RxBuffer, "POWER_ON")) {
-                            gpio_set_level(GPIO_OUTPUT_IO_0, 1);  // Activate GPIO12
-                            gpio_set_level(GPIO_OUTPUT_IO_1, 0);  // Deactivate GPIO4
+                            gpio_set_level(POWER_LED, 0);   // Turn ON power LED (active-low)
+                            gpio_set_level(RELAY, 1);       // Turn ON relay
+                            ESP_LOGI(TAG, "POWER_ON command received - LED and Relay activated");
                         }
                         if(strstr(g_RxBuffer, "POWER_OFF")) {
-                            gpio_set_level(GPIO_OUTPUT_IO_0, 0);  // Deactivate GPIO12
-                            gpio_set_level(GPIO_OUTPUT_IO_1, 1);  // Activate GPIO4
+                            gpio_set_level(POWER_LED, 1);   // Turn OFF power LED (active-low)
+                            gpio_set_level(RELAY, 0);       // Turn OFF relay
+                            ESP_LOGI(TAG, "POWER_OFF command received - LED and Relay deactivated");
                         }
                     }
-                    if(TypeStartWorkConn == mhdr->type) linked = 1;  // Mark connection ready
+                    if(TypeStartWorkConn == mhdr->type) {
+                        linked = 1;  // Mark connection ready
+                        set_frpc_connection_connected();  // Set NET LED to constant on
+                    }
                 } else if (1 == streamId) {  // Main control stream
                     ESP_LOGI(TAG, "g_ControlState: StateProxyWork");
                     if (TypePong == mhdr->type) {  // Keep-alive response
@@ -450,4 +444,43 @@ void process_data() {
             break;
         }
     }
+}
+
+/**
+ * 初始化GPIO引脚
+ */
+void init_gpio_pins()
+{
+    gpio_config_t io_conf;
+    
+    // 先配置输出引脚，确保初始状态正确
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    
+    // 单独配置每个输出引脚，避免状态跳变
+    
+    // 配置POWER_LED (GPIO12)
+    io_conf.pin_bit_mask = (1ULL << POWER_LED);
+    gpio_config(&io_conf);
+    gpio_set_level(POWER_LED, 1);  // 立即关闭电源LED（低电平有效）
+    
+    // 配置LINK_LED (GPIO13) 
+    io_conf.pin_bit_mask = (1ULL << LINK_LED);
+    gpio_config(&io_conf);
+    gpio_set_level(LINK_LED, 1);   // 立即关闭网络LED（低电平有效）
+    
+    // 配置RELAY (GPIO5)
+    io_conf.pin_bit_mask = (1ULL << RELAY);
+    gpio_config(&io_conf);
+    gpio_set_level(RELAY, 0);      // 立即关闭继电器
+    
+    // 配置输入引脚（按钮）
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 1;  // 启用上拉电阻
+    gpio_config(&io_conf);
 }

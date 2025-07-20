@@ -33,4 +33,12 @@ void TimerCallback(TimerHandle_t      xTimer);
 
 void CreateTimer();
 
+// LED status control functions
+void set_frpc_connection_connected(void);
+void set_frpc_connection_lost(void);
+void set_frpc_connection_disconnected(void);
+
+// Function to get current tick count
+uint32_t get_tick_count(void);
+
 #endif

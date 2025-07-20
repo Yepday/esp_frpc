@@ -38,6 +38,9 @@ extern Control_t *g_pMainCtl;       // Main control structure
 extern char g_ProxyWork;
 extern int linked;                  // Connection status flag
 
+// 连接状态控制函数声明 (定义在timer.c中)
+extern void set_frpc_connection_lost(void);
+
 static char proto_version = 0;      // Protocol version number
 static const char *TAG = "tcpmux";
 
@@ -173,6 +176,7 @@ int process_flags(uint16_t flags, struct tmux_stream *stream)
         // Handle FIN flag (connection termination)
         g_ProxyWork = 0;
         linked = 0;
+        set_frpc_connection_lost();  // 正常断开时设置LED闪烁
         
         switch(stream->state) {
         case SYN_SEND:

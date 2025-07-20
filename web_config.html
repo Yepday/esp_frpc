@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ESP8266 内网穿透配置</title>
+    <style>
+        body { font-family: "微软雅黑", Arial, sans-serif; }
+        label { display: inline-block; width: 120px; margin-bottom: 8px; }
+        input, select { width: 180px; margin-bottom: 8px; }
+        .line { border-top: 1px dashed #888; margin: 10px 0; }
+        .btn { width: 80px; height: 30px; }
+        .note { color: #666; font-size: 12px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="note">
+        <strong>说明：</strong>只填写需要修改的参数，空白字段将保持原有配置不变
+    </div>
+    
+    <form method="POST" action="/update">
+        <h3>WiFi 配置</h3>
+        <div>
+            <label for="wifi_ssid">WiFi SSID：</label>
+            <input type="text" id="wifi_ssid" name="wifi_ssid" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="wifi_pass">WiFi 密码：</label>
+            <input type="password" id="wifi_pass" name="wifi_pass" placeholder="保持原配置"
+                   oninput="validatePassword()" onblur="validatePassword()">
+            <span id="password_error" style="color: red; font-size: 12px; display: none;">
+                WiFi密码长度必须至少8个字符
+            </span>
+        </div>
+        <div>
+            <label for="wifi_enc">加密方式：</label>
+            <select id="wifi_enc" name="wifi_enc">
+                <option value="">保持原配置</option>
+                <option value="WPA2">WPA2</option>
+                <option value="WPA">WPA</option>
+                <option value="WEP">WEP</option>
+                <option value="NONE">无加密</option>
+            </select>
+        </div>
+        <div class="line"></div>
+        <h3>frp 配置</h3>
+        <div>
+            <label for="frp_server">服务器地址：</label>
+            <input type="text" id="frp_server" name="frp_server" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="frp_port">服务器端口：</label>
+            <input type="number" id="frp_port" name="frp_port" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="frp_token">认证令牌：</label>
+            <input type="password" id="frp_token" name="frp_token" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="proxy_name">代理名称：</label>
+            <input type="text" id="proxy_name" name="proxy_name" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="proxy_type">代理类型：</label>
+            <select id="proxy_type" name="proxy_type">
+                <option value="">保持原配置</option>
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+            </select>
+        </div>
+        <div>
+            <label for="local_ip">本地服务IP：</label>
+            <input type="text" id="local_ip" name="local_ip" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="local_port">本地端口：</label>
+            <input type="number" id="local_port" name="local_port" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="remote_port">远程端口：</label>
+            <input type="number" id="remote_port" name="remote_port" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="heartbeat_interval">心跳间隔(秒)：</label>
+            <input type="number" id="heartbeat_interval" name="heartbeat_interval" placeholder="保持原配置">
+        </div>
+        <div>
+            <label for="heartbeat_timeout">心跳超时(秒)：</label>
+            <input type="number" id="heartbeat_timeout" name="heartbeat_timeout" placeholder="保持原配置">
+        </div>
+        <div>
+            <button class="btn" type="submit" onclick="return validateForm()">更新</button>
+        </div>
+    </form>
+
+    <script>
+        function validatePassword() {
+            const password = document.getElementById('wifi_pass');
+            const errorSpan = document.getElementById('password_error');
+            const submitBtn = document.querySelector('button[type="submit"]');
+            
+            // 如果密码字段为空，则不进行验证
+            if (password.value.length === 0) {
+                errorSpan.style.display = 'none';
+                password.style.borderColor = '';
+                submitBtn.disabled = false;
+                submitBtn.style.backgroundColor = '';
+                return true;
+            }
+            
+            // 如果输入了密码，则检查长度
+            if (password.value.length < 8) {
+                errorSpan.style.display = 'inline';
+                password.style.borderColor = 'red';
+                submitBtn.disabled = true;
+                submitBtn.style.backgroundColor = '#ccc';
+                return false;
+            } else {
+                errorSpan.style.display = 'none';
+                password.style.borderColor = '';
+                submitBtn.disabled = false;
+                submitBtn.style.backgroundColor = '';
+                return true;
+            }
+        }
+        
+        function validateForm() {
+            const password = document.getElementById('wifi_pass');
+            
+            // 如果填写了密码，则需要验证长度
+            if (password.value.length > 0 && password.value.length < 8) {
+                alert('如果要修改WiFi密码，长度至少需要8个字符！');
+                password.focus();
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // 页面加载时初始化验证
+        window.onload = function() {
+            validatePassword();
+        };
+    </script>
+</body>
+</html> 

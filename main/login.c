@@ -29,6 +29,7 @@
 #include "esp_log.h"
 #include "login.h"
 #include "msg.h"
+#include "config.h"
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
@@ -119,12 +120,12 @@ int init_main_config()
         return _FAIL;
     }
 
-    // Set configuration values from defines
-    g_pMainConf->server_addr = strdup(SERVER_ADDR);              // Server address
-    g_pMainConf->server_port = SERVER_PORT;                      // Server port
-    g_pMainConf->auth_token = strdup(AUTH_TOKEN);                // Authentication token
-    g_pMainConf->heartbeat_interval = HEARTBEAT_INTERVAL;        // Heartbeat interval
-    g_pMainConf->heartbeat_timeout = HEARTBEAT_TIMEOUT;          // Heartbeat timeout
+    // Set configuration values from NVS config
+    g_pMainConf->server_addr = strdup(g_device_config.frp_server);              // Server address
+    g_pMainConf->server_port = g_device_config.frp_port;                        // Server port
+    g_pMainConf->auth_token = strdup(g_device_config.frp_token);                // Authentication token
+    g_pMainConf->heartbeat_interval = g_device_config.heartbeat_interval;       // Heartbeat interval
+    g_pMainConf->heartbeat_timeout = g_device_config.heartbeat_timeout;         // Heartbeat timeout
 
     dump_common_conf(); // Print configuration details
 

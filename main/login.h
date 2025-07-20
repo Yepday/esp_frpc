@@ -29,19 +29,6 @@
 
 #define PROTOCOL_VERESION "0.43.0"
 
-#define SERVER_ADDR        "xx.xx.xx.xx"
-
-#define SERVER_PORT        7000
-#define AUTH_TOKEN         "52010"
-#define HEARTBEAT_INTERVAL 30
-#define HEARTBEAT_TIMEOUT  90
-
-#define PROXY_NAME   "ssh-ubuntu"
-#define PROXY_TYPE   "tcp"
-#define LOCAL_IP     "127.0.0.1"
-#define LOCAL_PORT   22
-#define REMOTE_PORT  7005
-
 typedef struct login {
 	char		*version;
 	char		*hostname;

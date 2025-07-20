@@ -29,6 +29,9 @@
 
 #define RESET_DEVICE esp_restart()
 
+// 全局变量声明
+extern bool config_mode;  // 配置模式标志（定义在main.c中）
+
 typedef struct Control {
 	int                 iMainSock;  	//main socketfd
 	tmux_stream_t    	stream;
@@ -107,5 +110,7 @@ void new_client_connect();
 void start_proxy_services();
 
 void connect_to_server();
+
+void init_gpio_pins();
 
 #endif
